@@ -4,4 +4,5 @@ dest = "/etc/nginx/conf.d/upstream.conf"
 keys = [
   "/nginx/cqa_dev/34874f35-90f7-4722-9eb9-83a4e4c4f1fd"
 ]
+check_cmd = "/usr/sbin/nginx -t -c {{.src}}"
 reload_cmd = "nginx -s reload"
