@@ -1,0 +1,7 @@
+[template]
+src = "health_check.tmpl"
+dest = "/etc/nginx/conf.d/health_check.conf"
+keys = [
+  "/nginx/cqa_dev/34874f35-90f7-4722-9eb9-83a4e4c4f1fd"
+]
+reload_cmd = "nginx -s reload"
