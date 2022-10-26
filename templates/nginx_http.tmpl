@@ -1,0 +1,584 @@
+{{- $az_id := getenv "AZ_ID"  -}}
+{{- $vpc_id := getenv "VPC_ID"  -}}
+{{- $vips := printf "/nginx/%s/%s" $az_id $vpc_id  -}}
+
+{{/*generate the all sorts of maps geo split_clients and req_limit zones*/}}
+{{- range $vip_index, $vip := lsdir $vips -}}
+{{- $pools := printf "/nginx/%s/%s/%s/http/pools" $az_id $vpc_id $vip -}}
+    {{- $listeners := printf "%s/%s/http/listeners" $vips $vip  -}}
+    {{- range $listener_index, $listener := lsdir $listeners  -}}
+        {{- $listener_key := printf "%s/%s" $listeners $listener -}}{{$listener_value := json (getv $listener_key)  -}}
+        {{- $servers := printf "%s/servers" $listener_key  -}}
+        {{- range $server_index, $server := ls $servers  -}}
+            {{- $locations := printf "%s/%s/locations" $servers $server  -}}
+            {{- range $location_index, $location := lsdir $locations -}}
+                {{- $location_key := printf "%s/%s" $locations $location  -}}
+                {{- $location_value := json (getv $location_key)  -}}
+                {{- $limit_req := printf "%s/limit_req" $location_key -}}
+                {{- $limit_conn := printf "%s/limit_conn" $location_key -}}
+                {{- $traffic_route := printf "%s/traffic_route" $location_key -}}
+                {{- $health_check := printf "%s/health_check" $location_key -}}
+
+                {{- /*case1 the match name for health_check*/ -}}
+                {{- if and (exists $health_check) ($health_check_value := json (getv $health_check)) }}
+    match match_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} {
+                    {{- if $health_check_value.status }}
+        status {{$health_check_value.status}};
+                    {{- end -}}        
+                    {{- if $health_check_value.body }}
+        body {{$health_check_value.body}};
+                    {{- end }}        
+    }        
+                {{- end -}}
+
+                {{- /*case 2 for the location's limit_req_zone and limit_conn_zone*/ -}}
+                {{- if and (exists $limit_req) ($limit_req_value := json (getv $limit_req)) -}}
+                    {{- $zone_name := printf "limit-req_%d_%d_%d_%d" $vip_index $listener_index $server_index $location_index -}}
+
+                    {{- $key := "$binary_remote_addr" -}}
+                    {{- if and ($limit_req_value.key) (ne $limit_req_value.key "") -}}
+                        {{- $key = $limit_req_value.key -}}
+                    {{- end -}} 
+
+                    {{- $zone_size := "10m" -}}
+                    {{- if and ($limit_req_value.zone_size) (ne $limit_req_value.zone_size "") -}}
+                        {{- $zone_size = $limit_req_value.zone_size -}}
+                    {{- end -}} 
+
+                    {{- $rate := "1r/s" -}}
+                    {{- if and ($limit_req_value.rate) (ne $limit_req_value.rate "") -}}
+                        {{- $rate = $limit_req_value.rate -}}
+                    {{- end }}
+
+    limit_req_zone {{$key}} zone={{$zone_name}}:{{$zone_size}} rate={{$rate}};
+
+                {{- end -}}
+
+                {{- if and (exists $limit_conn) ($limit_conn_value := json (getv $limit_conn)) -}}
+                    {{- $zone_name := printf "limit-conn_%d_%d_%d_%d" $vip_index $listener_index $server_index $location_index -}}
+
+                    {{- $key := "$binary_remote_addr" -}}
+                    {{- if and ($limit_conn_value.key) (ne $limit_conn_value.key "") -}}
+                        {{- $key = $limit_conn_value.key -}}
+                    {{- end -}} 
+
+                    {{- $zone_size := "10m" -}}
+                    {{- if and ($limit_conn_value.zone_size) (ne $limit_conn_value.zone_size "") -}}
+                        {{- $zone_size = $limit_conn_value.zone_size -}}
+                    {{- end }} 
+
+    limit_conn_zone {{$key}} zone={{$zone_name}}:{{$zone_size}};
+                {{- end -}}
+
+                {{- /*case 2 for the location's geo and maps in routerules */ -}}
+                {{- /*case 3 for the location's split_clients in ratio*/ -}}
+                {{- if and (exists $traffic_route) ($traffic_route_value := json (getv $traffic_route)) -}}
+                    {{- $routerules := $traffic_route_value.routerule -}}
+                    {{- $ratios := $traffic_route_value.ratio -}}
+                    {{- /*we only support two kinds of traffic routes so far*/ -}}
+                    {{- if $routerules }}
+    # genreate the values                                     
+                        {{- range $rule_index, $rule := $routerules -}}
+                            {{- $conditions := $rule.condition -}}
+                            {{- if $conditions -}}
+                                {{- /*generate all kinds of map/geos based on the type*/ -}}
+                                {{- range $condition_index, $condition := $conditions -}}
+                                    {{- if eq $condition.type "IP_SET" }}
+                                        {{- $ipset_value := "1" -}}
+                                        {{- $ipset_default_value := "0" -}}
+                                        {{- if and $condition.operation (eq $condition.operation "!=") -}}
+                                            {{- $ipset_value  = "0" -}}
+                                            {{- $ipset_default_value  = "1" -}}
+                                        {{- end }}
+
+    geo $val_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}}_{{$rule_index}}_{{$condition_index}} {
+                                        {{- range $ip := $condition.ips}}
+        {{$ip}}  {{$ipset_value}};                                                        
+                                        {{- end}}
+        default {{$ipset_default_value}};                                
+    }        
+                                    {{- end -}}
+
+                                    {{- if eq $condition.type "HEADER" }}
+                                        {{- /*replace the - with _ in the header value*/}}
+                                        
+    map $http_{{replace $condition.name "-" "_" -1}} $val_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}}_{{$rule_index}}_{{$condition_index}} {
+        {{if ne $condition.operation "="}}{{$condition.operation}}{{end}}{{$condition.value}} 1;
+        default 0;
+    }        
+                                    {{- end -}}
+
+                                    {{- if eq $condition.type "COOKIE" }}
+
+    map $cookie_{{$condition.name}} $val_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}}_{{$rule_index}}_{{$condition_index}} {
+        {{if ne $condition.operation "="}}{{$condition.operation}}{{end}}{{$condition.value}} 1;
+        default 0;
+    }        
+                                    {{- end -}}
+                                    {{- if eq $condition.type "ARG" }}
+
+    map $arg_{{$condition.name}} $val_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}}_{{$rule_index}}_{{$condition_index}} {
+        {{if ne $condition.operation "="}}{{$condition.operation}}{{end}}{{$condition.value}} 1;
+        default 0;
+    }        
+                                    {{- end -}}
+
+                                    {{- if eq $condition.type "VARIABLE" }}
+
+    map {{$condition.name}} $val_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}}_{{$rule_index}}_{{$condition_index}} {
+        {{if ne $condition.operation "="}}{{$condition.operation}}{{end}}{{$condition.value}} 1;
+        default 0;
+    }        
+                                    {{- end -}}
+
+                                {{- end -}}
+                            {{- end -}}
+                        {{- end -}}
+                    {{- else if $ratios }}
+    
+    # generate the split_clients
+    split_clients "${remote_addr}AAA" $split_clients_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} {
+                        {{- range $ratio_index, $ratio := $ratios }}
+                            {{- $pool_id := $ratio.pool_id }}
+        {{$ratio.ratio}}%  {{base64Encode $pool_id}}_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}}_ratio_{{$ratio_index}};
+                        {{- end }}
+                        {{- if $traffic_route_value.default_pool }}
+                            {{- $pool_id := $traffic_route_value.default_pool }}
+        *  {{base64Encode $pool_id}}_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}}_ratio_default;
+                        {{- end }}
+    }         
+                    {{- end -}}
+
+                {{- end -}}
+            {{- end -}}
+        {{- end -}}
+    {{- end -}}
+{{- end -}}
+
+{{- $left_brace := "{" -}}
+{{- $right_brace := "}" -}}
+{{- $az_id := getenv "AZ_ID"  -}}
+{{- $vpc_id := getenv "VPC_ID"  -}}
+{{- $vips := printf "/nginx/%s/%s" $az_id $vpc_id  -}}
+
+{{/*generate all the servers and locations*/}}
+{{- range $vip_index, $vip := lsdir $vips -}}
+{{- $pools := printf "/nginx/%s/%s/%s/http/pools" $az_id $vpc_id $vip -}}
+    {{- $listeners := printf "%s/%s/http/listeners" $vips $vip  -}}
+    {{- range $listener_index, $listener := lsdir $listeners  -}}
+        {{- $listener_key := printf "%s/%s" $listeners $listener -}}{{$listener_value := json (getv $listener_key)  -}}
+        {{- $servers := printf "%s/servers" $listener_key  -}}
+        {{- range $server_index, $server := ls $servers  }}
+    server {
+        #access_log /var/log/nginx/access.log http_log;
+        {{- $listen_options := "" -}}
+        {{- $server_name := $server -}}
+        {{- $listen_ip := $listener_value.vip -}}
+        {{- $listen_port := $listener_value.vport -}}
+        {{- $server_key := printf "%s/%s/advance" $servers $server -}}{{$server_value := json (getv $server_key)  -}}
+
+        {{- if eq $listener_value.protocol "https" -}}
+            {{- $listen_options = printf "%s ssl" $listen_options -}}
+        {{- end -}}
+
+        {{- if eq $server "_" -}}
+            {{$listen_options = printf "%s reuseport default_server" $listen_options -}}
+            {{$server_name = printf "%s:%.0f" $listen_ip $listener_value.vport -}}
+        {{- end }}
+
+        listen {{$listen_ip}}:{{$listen_port}} {{$listen_options}};
+        server_name {{$server_name}};
+
+        {{- /*mirror_value is to save mirror information since a new location is needed*/ -}}
+        {{- $mirror_value := "" -}}
+        {{- $mirror_pass_upstream := "" -}}
+        {{- $mirror := "" -}}
+
+        {{- /*ssl */ -}}
+        {{- if eq $listener_value.protocol "https"}}
+        include /etc/nginx/conf.d/ssl.conf;
+        ssl_protocols TLSv1.1 TLSv1.2;
+            {{- if $server_value.ssl_offload -}}
+                {{- range $server_value.ssl_offload }}
+        ssl_certificate      {{.crt_path}};
+        ssl_certificate_key  {{.crt_key_path}};
+                {{- end -}}           
+            {{- end }}
+        proxy_redirect  http:// $scheme://;
+         {{- end -}}   
+
+            {{- $locations := printf "%s/%s/locations" $servers $server  -}}
+            {{- range $location_index, $location := lsdir $locations -}}
+                {{- $location_key := printf "%s/%s" $locations $location  -}}
+                {{- $location_value := json (getv $location_key)  -}}
+                {{- $cors := printf "%s/cors" $location_key -}}
+                {{- $enable_websocket := printf "%s/enable_websocket" $location_key -}}
+                {{- $mirror = printf "%s/mirror" $location_key -}}
+                {{- $limit_req := printf "%s/limit_req" $location_key -}}
+                {{- $limit_conn := printf "%s/limit_conn" $location_key -}}
+                {{- $proxy_rewrite := printf "%s/proxy_rewrite" $location_key -}}
+                {{- $response_rewrite := printf "%s/response_rewrite" $location_key -}}
+                {{- $ip_restriction := printf "%s/ip_restriction" $location_key -}}
+                {{- $traffic_route := printf "%s/traffic_route" $location_key -}}
+                {{- $reject := printf "%s/uri_blocker" $location_key -}}
+                {{- $response_rewrite := printf "%s/response_rewrite" $location_key -}}
+                {{- $proxy_rewrite := printf "%s/proxy_rewrite" $location_key -}}
+                {{- $redirect := printf "%s/redirect" $location_key -}}
+                {{- $referer_restriction := printf "%s/referer_restriction" $location_key -}}
+                
+                {{- /*generate the locations*/ -}}       
+                {{- if eq $location_value.location_name "_" }}
+
+        location / {         
+                {{else}}
+
+        location {{$location_value.location_name }} {         
+                {{end }}
+
+                {{- if $location_value.policies.proxy_connect_timeout }}
+            proxy_connect_timeout {{$location_value.policies.proxy_connect_timeout}};
+                {{- end -}}
+                {{- if $location_value.policies.proxy_read_timeout }}
+            proxy_read_timeout {{$location_value.policies.proxy_read_timeout}};
+                {{- end -}}
+                {{- if $location_value.policies.proxy_send_timeout }}
+            proxy_send_timeout {{$location_value.policies.proxy_send_timeout}};
+                {{- end }}
+
+                {{- if $location_value.policies.keepalive_timeout }}
+            keepalive_timeout {{$location_value.policies.keepalive_timeout}};    
+                {{- end -}}
+                {{- if eq $location_value.policies.compression.gzip "on" }}         
+
+            # generate compression related directives
+            gzip on;
+            gzip_vary on;
+            gzip_min_length 1024;
+            gzip_comp_level 2;
+            gzip_http_version 1.0;
+            gzip_disable "MSIE [1-6]\.";
+            gzip_types  text/xml text/plain text/css application/javascript application/x-javascript application/rss+xml application/atom+xml application/xml;
+                {{- end -}}
+
+                {{- if and (exists $cors) ($cors_value := json (getv $cors)) }}
+
+            # generate cors    
+                    {{- if $cors_value.allow_origins }}
+            add_header  'Access-Control-Allow-Origin' "{{$cors_value.allow_origins}}";
+                    {{- end }}
+                    {{- if $cors_value.allow_methods }}
+            add_header  'Access-Control-Allow-Origin' "{{$cors_value.allow_methods}}";
+                    {{- end }}
+                    {{- if $cors_value.expose_header }}
+            add_header 'Access-Control-Expose-Headers' "{{$cors_value.expose_header}}";
+                    {{- end }}
+                    {{- if $cors_value.allow_headers }}
+            add_header 'Access-Control-Allow-Headers' "{{$cors_value.allow_headers}}";
+                    {{- end }}
+                    {{- if $cors_value.max_age }}
+            add_header 'Access-Control-Max-Age' "{{$cors_value.max_age}}";
+                    {{- end -}}
+                    {{- if $cors_value.allow_credential }}
+            add_header 'Access-Control-Allow-Credentials' "{{$cors_value.allow_credential}}";
+                    {{- end -}}
+                {{- end -}}
+
+                {{- if and (exists $ip_restriction) ($ip_restriction_value := json (getv $ip_restriction)) }}
+
+            # generate ip-restriction
+                    {{- range $rule := $ip_restriction_value.rules -}}
+                        {{- range $k,$v := $rule }}
+            {{$k}} {{$v}};
+                        {{- end -}}
+                    {{- end -}}
+                {{- end -}}
+
+                {{- if and (exists $enable_websocket) ($enable_websocket_value := json (getv $enable_websocket)) -}}
+                    {{- if eq $enable_websocket_value.enable_websocket "true" }}
+
+            # generate websocket
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+                    {{- end -}}
+                {{- end -}}
+
+                {{- if and (exists $limit_conn) ($limit_conn_value := json (getv $limit_conn)) -}}
+                    {{- $zone_name := printf "limit-conn_%d_%d_%d_%d" $vip_index $listener_index $server_index $location_index}}
+
+            # generate limit_conn
+            limit_conn {{$zone_name}} {{$limit_conn_value.conn}};
+                    {{- if $limit_conn_value.log_level }}
+            limit_conn_log_level {{$limit_conn_value.log_level}};        
+                    {{- end -}}    
+                {{- end -}}
+
+                {{- if and (exists $limit_req) ($limit_req_value := json (getv $limit_req)) -}}
+                    {{- $zone_name := printf "limit-req_%d_%d_%d_%d" $vip_index $listener_index $server_index $location_index}}
+                    {{- $limit_req_args := "" -}}
+                    {{- if $limit_req_value.burst -}}
+                        {{- $limit_req_args = printf "%s burst=%.0f" $limit_req_args $limit_req_value.burst -}}
+                    {{- end -}}
+                    {{- if $limit_req_value.no_delay -}}
+                        {{- $limit_req_args = printf "%s nodelay" $limit_req_args -}}
+                    {{- end}}
+
+            # generate limit_conn
+            limit_req zone={{$zone_name}} {{$limit_req_args}};
+                    {{- if $limit_req_value.log_level }}
+            limit_req_log_level {{$limit_req_value.log_level}};        
+                    {{- end -}}    
+                {{- end -}}
+
+                {{- if and (exists $reject) ($reject_value := json (getv $reject))}}
+
+             # reject 
+                    {{- $operator := "~" -}}
+                    {{- if eq $reject_value.case_insensitive "true" -}}
+                        {{- $operator = "~*" -}}
+                    {{- end -}}
+
+                    {{- $key_words := "(" -}}
+                    {{- range $index, $key := $reject_value.pattern -}}
+                        {{- if eq $index 0 -}}
+                            {{- $key_words = printf "%s%s" $key_words $key -}}
+                        {{- else -}}
+                            {{- $key_words = printf "%s|%s" $key_words $key -}}
+                        {{- end -}}              
+                    {{- end -}}
+                    {{- $key_words = printf "%s)" $key_words -}}
+            
+                    {{- $code := "400" -}}
+                    {{- if $reject_value.rejected_code -}}
+                        {{- $code = $reject_value.rejected_code -}}
+                    {{- end -}}
+            
+                    {{- $message := "rejected" -}}
+                    {{- if $reject_value.rejected_msg -}} 
+                        {{- $message = printf "\"%s\"" $reject_value.rejected_msg -}}
+                    {{- end}}
+            if ($request_uri {{$operator}} {{$key_words}}) {
+                return {{$code}} {{$message}};
+            }
+                {{- end -}}        
+                           
+                {{- if and (exists $mirror)  ($mirror_value = json (getv $mirror)) }}
+                    {{- if and $mirror_value.proxy_pass_pool $mirror_value.proxy_pass_uri }}
+            # genereate the mirror    
+            mirror {{$mirror_value.proxy_pass_uri}};
+            mirror_request_body {{$mirror_value.mirror_request_body}};
+                        {{- $pool_id := $mirror_value.proxy_pass_pool -}}
+                        {{- $mirror_pass_upstream = printf "%s_%d_%d_%d_%d_mirror" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index -}}
+                    {{- end -}}
+                {{- end -}}
+
+                {{- if and (exists $response_rewrite) ($response_rewrite_value := json (getv $response_rewrite)) }}
+
+            # genereate the response rewrite        
+                    {{- $headers := $response_rewrite_value.header -}}
+                    {{- if $headers -}}
+                        {{- range $head := $headers.add -}}
+                            {{range $k,$v := $head}}
+            add_header {{$k}} "{{$v}}";
+                            {{- end -}}
+                        {{- end -}}
+                        {{- range $headers.hide}}
+            proxy_hide_header {{.}};
+                        {{- end -}}
+                        {{- range $headers.ignore }}
+            proxy_hide_header {{.}};
+                        {{- end -}}
+                        {{- range $headers.rewrite_pass}}
+            proxy_pass_header {{.}};
+                        {{- end -}}
+                    {{- end -}}
+
+                    {{- $body := $response_rewrite_value.body -}}
+                    {{- $status_code := $response_rewrite_value.status_code -}}
+                    {{- $filter := $response_rewrite_value.filter -}}
+                    {{- if $status_code -}}
+                        {{- $msg := "response written" -}}
+                        {{- if $body -}}
+                            {{- $msg = $body -}}
+                        {{- end }}
+            return {{$status_code}} "{{$msg}}";
+                    {{- else }}
+                        {{- if and ($filter.regex) ($filter.replace) -}}
+            sub_filter "{{$filter.regex}}" "{{$filter.replace}}";
+                           {{- if ne $filter.scope "once" }}
+            sub_filter_once off;
+                           {{- end -}}
+                        {{- end -}}
+                    {{- end -}}
+                {{- end -}}
+
+                {{- if and (exists $referer_restriction) ($referer_restriction_value := json (getv $referer_restriction)) }}
+                    {{- $referer_flags := "" -}}
+                    {{- if eq $referer_restriction_value.bypass_missing "true" -}}  
+                        {{- $referer_flags = "none blocked" -}}
+                    {{- end -}}
+
+                    {{- if $referer_restriction_value.array -}}
+                        {{- $referer_flags = printf "%s server_names" $referer_flags -}}
+                        {{- range $referer_name := $referer_restriction_value.array -}}
+                            {{- $referer_flags = printf "%s %s" $referer_flags $referer_name -}}
+                        {{- end -}}
+                    {{- end }}
+            # genereate the referer_restriction       
+            valid_referers {{$referer_flags}};
+                    {{- $restriction_value := "1" -}}
+                    {{- if eq $referer_restriction_value.type "white" -}}
+                        {{- $restriction_value = "" -}}
+                    {{- end -}}
+                    {{- $referer_message := printf "%s \"%s\"" $referer_restriction_value.code $referer_restriction_value.message }}
+            if ($invalid_referer = "{{$restriction_value}}") {
+                return {{$referer_message}};
+            }       
+                {{- end -}}
+
+                {{- if and (exists $redirect) ($redirect_value := json (getv $redirect)) }}
+            # genereate the redirect        
+                    {{- if eq $redirect_value.http_to_https "false" -}}
+                        {{- if $redirect_value.uri }}
+            rewrite ^(.*)$ {{$redirect_value.uri}}/$1 break;            
+                        {{- else if $redirect_value.regex_uri -}}
+                            {{- $regex_uris := $redirect_value.regex_uri -}}
+                            {{- $src := "" -}}
+                            {{- $dst := "" -}}
+                            {{- range $regex_index, $regex_uri := $regex_uris -}}
+                                {{- if eq $regex_index 0 -}}
+                                    {{- $src = $regex_uri -}}
+                                {{- end -}}
+
+                                {{- if eq $regex_index 1 -}}
+                                    {{- $dst = $regex_uri -}}
+                                {{- end -}}
+                            {{- end }}
+            proxy_redirect {{$src}} {{$dst}}; 
+                        {{- end -}}
+                    {{- else }}
+                        {{- $redirect_port := 443 -}}
+                        {{- if $redirect_value.port -}}
+                            {{- $redirect_port = $redirect_value.port -}}
+                        {{- end }}
+            return 301 https://$host:{{$redirect_port}}/$request_uri;        
+                    {{- end -}}
+                {{- end -}}
+                {{- if and (exists $proxy_rewrite) ($proxy_rewrite_value := json (getv $proxy_rewrite)) }}
+
+            # genereate the proxy rewrite        
+                    {{- if $proxy_rewrite_value.method }}
+            proxy_method {{$proxy_rewrite_value.method}};
+                    {{- end -}}
+
+                    {{- if $proxy_rewrite_value.host }}
+            proxy_set_header "host" {{$proxy_rewrite_value.host}};
+                    {{- end -}}
+
+                    {{- if eq $proxy_rewrite_value.pass_flag true }}
+            proxy_pass_request_headers  on;
+                    {{- else -}}
+            proxy_pass_request_headers  off;
+                    {{- end -}}
+
+                    {{- if $proxy_rewrite_value.uri }}
+            rewrite ^(.*)$ {{$proxy_rewrite_value.uri}};
+                    {{- end -}}
+                    {{- if $proxy_rewrite_value.regex_uri -}}
+                        {{- $regex_uris := $proxy_rewrite_value.regex_uri -}}
+                        {{- $src := "" -}}
+                        {{- $dst := "" -}}
+                        {{- range $regex_index, $regex_uri := $regex_uris -}}
+                            {{- if eq $regex_index 0 -}}
+                                {{- $src = $regex_uri -}}
+                            {{- end -}}
+
+                            {{- if eq $regex_index 1 -}}
+                                {{- $dst = $regex_uri -}}
+                            {{- end -}}
+                        {{- end -}}
+                        
+                        {{- if and ($src) ($dst) }}
+            proxy_redirect {{$src}} {{$dst}};
+                        {{- end -}}
+                    {{- end -}}
+
+                {{- end -}}
+
+                {{- if and (exists $traffic_route) ($traffic_route_value := json (getv $traffic_route)) -}}
+                    {{- $routerules := $traffic_route_value.routerule -}}
+                    {{- $ratios := $traffic_route_value.ratio }}
+                    {{- if $routerules }}
+
+            # genereate routerules
+                        {{- range $rule_index, $rule := $routerules -}}
+                            {{- $condition_variable := "" -}}
+                            {{- $condition_value := "" -}}
+                            {{- range $condition_index, $condition := $rule.condition -}}
+                                {{- $condition_variable = printf "%s${val_%d_%d_%d_%d_%d_%d}" $condition_variable $vip_index $listener_index $server_index $location_index $rule_index $condition_index -}}
+                                {{- $condition_value = printf "%s1" $condition_value -}}
+                            {{- end -}}
+                            {{- $pool_id := $rule.redirect_pool -}}
+                            {{- $upstream_name := printf "%s_%d_%d_%d_%d_routerule_%d" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index $rule_index }}
+                            {{- $routerules_variable := printf "routerule_%d_%d_%d" $server_index $location_index $rule_index}} 
+            set ${{$routerules_variable}} {{$condition_variable}};
+            if (${{$routerules_variable}} = "{{$condition_value}}") {
+                proxy_pass $scheme://{{$upstream_name}};
+            }
+                        {{- end -}}
+                        {{- $pool_id := $location_value.default_pool_id -}}
+                        {{- $upstream_name := printf "%s_%d_%d_%d_%d_default" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index }}
+            # genereate the rest of the pool
+            proxy_pass $scheme://{{$upstream_name}};
+                    {{- else if $ratios }}
+            
+            # generate proxy pass for ratio
+                       {{- $upstream_name := printf "split_clients_%d_%d_%d_%d" $vip_index $listener_index $server_index $location_index}}        
+            proxy_pass $scheme://${{$upstream_name}};
+                    {{- end -}}
+                {{- else -}}
+                    {{- $pool_id := $location_value.default_pool_id -}}
+                    {{-  $upstream_name := printf "%s_%d_%d_%d_%d_default" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index }}
+
+            # generate proxy pass for default
+            proxy_pass $scheme://{{$upstream_name}};           
+                {{- end -}} 
+                
+                {{- /*end of all sorts of policies*/}}    
+
+            proxy_next_upstream error timeout http_502;
+            proxy_next_upstream_tries 1;
+        }         
+            {{- end }}
+            
+            {{- if exists $mirror -}}
+                {{- if and $mirror_value.proxy_pass_uri $mirror_value.proxy_pass_pool }}
+        # genereate the mirror location 
+        location = {{$mirror_value.proxy_pass_uri}} {
+            internal;
+                    {{- range $mirror_rule := $mirror_value.mirror_set }}
+                        {{- range $k, $v := $mirror_rule}}
+            proxy_set_header {{$k}} "{{$v}}";    
+                        {{- end -}}
+                    {{- end}}
+            proxy_pass $scheme://{{$mirror_pass_upstream}}/$request_uri;
+        }    
+            {{- end -}}
+            {{- end }}
+
+        error_page  500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   html;
+        }
+            {{- /*only generate the health check locations for the first server of the first listener*/ -}}
+            {{- if and (eq $listener_index 0) (eq $server_index 0)}}
+        # generate the internal locations here for the health check
+        include /etc/nginx/conf.d/health_check.conf;
+            {{- end }}
+
+        {{- end }}
+    }    
+    {{- end -}}
+{{- end -}} 
+
+

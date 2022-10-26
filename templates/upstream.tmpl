@@ -1,0 +1,149 @@
+{{- $az_id := getenv "AZ_ID"  -}}
+{{- $vpc_id := getenv "VPC_ID"  -}}
+{{- $vips := printf "/nginx/%s/%s" $az_id $vpc_id  -}}
+
+{{- range $vip_index, $vip := lsdir $vips -}}
+{{- $pools := printf "/nginx/%s/%s/%s/http/upstream" $az_id $vpc_id $vip -}}
+    {{- $listeners := printf "%s/%s/http/listeners" $vips $vip  -}}
+    {{- range $listener_index, $listener := lsdir $listeners  -}}
+        {{- $listener_key := printf "%s/%s" $listeners $listener -}}{{$listener_value := json (getv $listener_key)  -}}
+        {{- $servers := printf "%s/servers" $listener_key  -}}
+        {{- range $server_index, $server := ls $servers  -}}
+            {{- $locations := printf "%s/%s/locations" $servers $server  -}}
+            {{- range $location_index, $location := lsdir $locations -}}
+                {{- $location_key := printf "%s/%s" $locations $location  -}}
+                {{- $location_value := json (getv $location_key)  -}}
+                {{- $health_check := printf "%s/health_check" $location_key -}}
+
+                {{- /*case 1 for the location's default pool*/ -}}
+                {{- $pool_id := $location_value.default_pool_id -}}
+                {{- $pool_key := printf "%s/%s" $pools $pool_id -}}
+                {{- if and (exists $pool_key) ($pool_value := json (getv $pool_key)) -}}
+                    {{-  $upstream_name := printf "%s_%d_%d_%d_%d_default" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index }}
+    upstream {{ $upstream_name }} {
+                    {{- if ne $location_value.policies.lb_method  "round_robin"}}
+        {{$location_value.policies.lb_method}};
+                    {{- end -}}
+                    {{-  if exists $health_check }}
+        zone {{ $upstream_name }} 64k;                
+                    {{- end -}}
+                    {{- if $location_value.policies.session -}}
+                        {{- $sticky_value := $location_value.policies.session -}}
+                        {{- $sticky_flags := "" -}}
+                        {{- if eq $sticky_value.type "cookie" -}}
+                            {{- if $sticky_value.expires -}}
+                                {{- $sticky_flags = printf "%s expires=%s" $sticky_flags $sticky_value.expires -}}
+                            {{- end -}}
+                            {{- if $sticky_value.domain -}}
+                                {{- $sticky_flags = printf "%s domain=%s" $sticky_flags $sticky_value.domain -}}
+                            {{- end -}}
+                            {{- if $sticky_value.path -}}
+                                {{- $sticky_flags = printf "%s path=%s" $sticky_flags $sticky_value.path -}}
+                            {{- end -}}
+                        {{- end }}
+        sticky {{$location_value.policies.session.type}} {{$location_value.policies.session.name}} {{$sticky_flags}};             
+                    {{- end -}}
+
+
+                    {{-  range $pool_value.members  }}
+        server {{.ip}}{{if .port }}:{{.port}} {{end}} {{if .weight}} weight={{.weight}} {{end }} {{if .backup }} backup{{end }};   
+                    {{-  end }}
+    }           
+                {{- end -}}
+
+                {{- /*case 2 for the location's mirror proxy_pass_pool*/ -}}
+                {{- $mirror := printf "%s/mirror" $location_key  -}}
+                {{- if and (exists $mirror) ($mirror_value := json (getv $mirror)) -}}
+                    {{- $pool_id := $mirror_value.proxy_pass_pool -}}
+                    {{- $pool_key := printf "%s/%s" $pools $pool_id -}}
+
+                    {{- if and (exists $pool_key) ($pool_value := json (getv $pool_key)) -}}
+                        {{ $upstream_name := printf "%s_%d_%d_%d_%d_mirror" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index }}
+    upstream {{ $upstream_name }} {
+                        {{-  if exists $health_check }}
+        zone {{ $upstream_name }} 64k;                
+                        {{- end -}}
+
+                        {{- /*TODO add the location's attributes here*/ -}}
+
+                        {{ range $pool_value.members  }}
+        server {{.ip}}{{if .port }}:{{.port}} {{end}} {{if .weight}} weight={{.weight}} {{end }} {{if .backup }} backup{{end }};   
+                        {{- end }}
+    }           
+                    {{- end -}}
+                {{- end -}}
+
+                {{- /*case 3 for the location's routerules conditions redirect_pool*/ -}}
+                {{- /*case 4 for the location's routerules ratio redirect_pool*/ -}}
+                {{- $traffic_route := printf "%s/traffic_route" $location_key  -}}
+                {{- if and (exists $traffic_route) ($traffic_route_value := json (getv $traffic_route)) -}}
+                    {{- $routerules := $traffic_route_value.routerule -}}
+                    {{- $ratios := $traffic_route_value.ratio -}}
+                    {{- /*we only support two kinds of traffic routes so far*/ -}}
+                    {{- if $routerules -}}
+                        {{- range $rule_index, $rule := $routerules -}}
+                            {{- $pool_id := $rule.redirect_pool -}}
+                            {{- $pool_key := printf "%s/%s" $pools $pool_id -}}
+                            {{- if and (exists $pool_key) ($pool_value := json (getv $pool_key)) -}}
+                                {{ $upstream_name := printf "%s_%d_%d_%d_%d_routerule_%d" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index $rule_index }}
+
+    upstream {{ $upstream_name }} {
+                                {{-  if exists $health_check }}
+        zone {{ $upstream_name }} 64k;                
+                                {{- end -}}
+
+                        {{- /*TODO add the location's attributes here*/ -}}
+
+                                {{ range $pool_value.members  }}
+        server {{.ip}}{{if .port }}:{{.port}} {{end}} {{if .weight}} weight={{.weight}} {{end }} {{if .backup }} backup{{end }};   
+                                {{- end }}
+    }           
+                            {{- end -}} 
+
+                        {{- end -}}
+                    {{- else if $ratios -}}
+                        {{- range $ratio_index, $ratio := $ratios -}}
+                            {{- $pool_id := $ratio.pool_id -}}
+                            {{- $pool_key := printf "%s/%s" $pools $pool_id -}}
+                            {{- if and (exists $pool_key) ($pool_value := json (getv $pool_key)) -}}
+                                {{ $upstream_name := printf "%s_%d_%d_%d_%d_ratio_%d" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index $ratio_index }}
+    upstream {{ $upstream_name }} {
+                                {{-  if exists $health_check }}
+        zone {{ $upstream_name }} 64k;                
+                                {{- end -}}
+
+                        {{- /*TODO add the location's attributes here*/ -}}
+
+                                {{ range $pool_value.members  }}
+        server {{.ip}}{{if .port }}:{{.port}} {{end}} {{if .weight}} weight={{.weight}} {{end }} {{if .backup }} backup{{end }};   
+                                {{- end }}
+    }           
+                            {{- end -}}
+
+                        {{- end -}}
+                        {{- if $traffic_route_value.default_pool -}}
+                            {{- $pool_id := $traffic_route_value.default_pool -}}
+                            {{- $pool_key := printf "%s/%s" $pools $pool_id -}}
+                            {{- if and (exists $pool_key) ($pool_value := json (getv $pool_key)) -}}
+                                {{ $upstream_name := printf "%s_%d_%d_%d_%d_ratio_default" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index }}
+    upstream {{ $upstream_name }} {
+                                {{-  if exists $health_check }}
+        zone {{ $upstream_name }} 64k;                
+                                {{- end -}}
+
+                        {{- /*TODO add the location's attributes here*/ -}}
+
+                                {{ range $pool_value.members  }}
+        server {{.ip}}{{if .port }}:{{.port}} {{end}} {{if .weight}} weight={{.weight}} {{end }} {{if .backup }} backup{{end }};   
+                                {{- end }}
+    }                            
+                            {{- end -}}    
+                        {{- end -}}
+                    {{- end -}}
+                {{- end -}}
+
+            {{- end -}}
+        {{- end -}}
+    {{- end -}}
+{{- end -}}
+
