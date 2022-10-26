@@ -1,0 +1,49 @@
+{{- $az_id := getenv "AZ_ID"  -}}
+{{- $vpc_id := getenv "VPC_ID"  -}}
+{{- $global_key := printf "/nginx/%s/%s/global" $az_id $vpc_id -}}
+
+{{- $worker_processes := "auto" -}}
+{{- $worker_cpu_affinity := "auto" -}}
+{{- $working_directory := "/etc/nginx" -}}
+{{- $worker_rlimit_nofile := "512" -}}
+{{- $worker_connections := "1024" -}}
+
+#debug {{$global_key}}
+{{- if and (exists $global_key) ($global_vals := json (getv $global_key)) -}}
+#debug {{$global_vals}}
+    {{- range $k,$v := $global_vals -}}
+        {{- if eq $k "worker_processes" -}}
+            {{- $worker_processes = $v -}}
+        {{- end -}}
+        {{- if eq $k "worker_cpu_affinity" -}}
+            {{- $worker_cpu_affinity = $v -}}
+        {{- end -}}
+        {{- if eq $k "worker_rlimit_nofile" -}}
+            {{- $worker_rlimit_nofile = $v -}}
+        {{- end -}}
+        {{- if eq $k "working_directory" -}}
+            {{- $working_directory = $v -}}
+        {{- end -}}
+    {{- end -}}            
+{{- end }}
+
+#debug test {{$worker_processes }}
+#debug test {{$working_directory }}
+user  root;
+error_log  /var/log/nginx/error.log  warn;
+pid        /run/nginx.pid;
+pcre_jit on;
+
+# load_module modules/ngx_http_js_module.so;
+worker_rlimit_nofile  {{$worker_rlimit_nofile}};
+worker_processes    {{$worker_processes}};
+worker_cpu_affinity {{$worker_cpu_affinity}};
+working_directory  {{$working_directory}};
+
+events {
+    use epoll;
+    accept_mutex on;
+    multi_accept on;
+    worker_connections {{$worker_connections}};
+}
+
