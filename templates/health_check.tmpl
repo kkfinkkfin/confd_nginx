@@ -2,7 +2,7 @@
 {{- $vpc_id := getenv "VPC_ID"  -}}
 {{- $vips := printf "/nginx/%s/%s" $az_id $vpc_id  -}}
 {{- range $vip_index, $vip := lsdir $vips -}}
-{{- $pools := printf "/nginx/%s/%s/%s/http/upstream" $az_id $vpc_id $vip -}}
+{{- $pools := printf "/nginx/%s/%s/%s/upstream" $az_id $vpc_id $vip -}}
     {{- $listeners := printf "%s/%s/http/listeners" $vips $vip  -}}
     {{- range $listener_index, $listener := lsdir $listeners  -}}
         {{- $listener_key := printf "%s/%s" $listeners $listener -}}{{$listener_value := json (getv $listener_key)  -}}
@@ -16,7 +16,8 @@
 
                 {{- /*case 1 for the location's default pool*/ -}}
                 {{- $pool_id := $location_value.default_pool_id -}}
-                {{- $pool_key := printf "%s/%s" $pools $pool_id -}}
+                {{- $pool_key := printf "%s/%s" $pools $pool_id }}
+# debug {{$pool_key}}
                 {{- if exists $pool_key -}} {{- $pool_value := json (getv $pool_key) -}}
                     {{-  $upstream_name := printf "%s_%d_%d_%d_%d_default" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index -}}
                     {{-  if exists $health_check -}} {{- $health_check_value := json (getv $health_check) -}}
@@ -67,6 +68,8 @@
              proxy_pass http://{{$upstream_name}};
          }             
                     {{-  end }}
+                {{- else }}
+# debug {{$pool_key}} doesn't exist
                 {{- end -}}
 
                 {{- /*case 2 for the location's mirror proxy_pass_pool*/ -}}
