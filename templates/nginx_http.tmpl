@@ -474,7 +474,7 @@
                     {{- end -}}
 
                     {{- $key_words := "(" -}}
-                    {{- range $index, $key := $reject_value.pattern -}}
+                    {{- range $index, $key := $reject_value.uri -}}
                         {{- if eq $index 0 -}}
                             {{- $key_words = printf "%s%s" $key_words $key -}}
                         {{- else -}}
