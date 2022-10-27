@@ -8,9 +8,7 @@
 {{- $worker_rlimit_nofile := "512" -}}
 {{- $worker_connections := "1024" -}}
 
-#debug {{$global_key}}
-{{- if and (exists $global_key) ($global_vals := json (getv $global_key)) -}}
-#debug {{$global_vals}}
+{{- if exists $global_key -}} {{- $global_vals := json (getv $global_key) -}}
     {{- range $k,$v := $global_vals -}}
         {{- if eq $k "worker_processes" -}}
             {{- $worker_processes = $v -}}
@@ -27,8 +25,6 @@
     {{- end -}}            
 {{- end }}
 
-#debug test {{$worker_processes }}
-#debug test {{$working_directory }}
 user  root;
 error_log  /var/log/nginx/error.log  warn;
 pid        /run/nginx.pid;

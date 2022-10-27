@@ -17,9 +17,9 @@
                 {{- /*case 1 for the location's default pool*/ -}}
                 {{- $pool_id := $location_value.default_pool_id -}}
                 {{- $pool_key := printf "%s/%s" $pools $pool_id -}}
-                {{- if and (exists $pool_key) ($pool_value := json (getv $pool_key)) -}}
+                {{- if exists $pool_key -}} {{- $pool_value := json (getv $pool_key) -}}
                     {{-  $upstream_name := printf "%s_%d_%d_%d_%d_default" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index -}}
-                    {{-  if and (exists $health_check) ($health_check_value := json (getv $health_check)) -}}
+                    {{-  if exists $health_check -}} {{- $health_check_value := json (getv $health_check) -}}
                         {{- $health_check_flags := "" -}}
                         {{- if ne $health_check_value.uri "" -}}
                             {{- $health_check_flags = printf "uri=%s" $health_check_value.uri -}}
@@ -71,13 +71,13 @@
 
                 {{- /*case 2 for the location's mirror proxy_pass_pool*/ -}}
                 {{- $mirror := printf "%s/mirror" $location_key  -}}
-                {{- if and (exists $mirror) ($mirror_value := json (getv $mirror)) -}}
+                {{- if exists $mirror -}} {{- $mirror_value := json (getv $mirror) -}}
                     {{- $pool_id := $mirror_value.proxy_pass_pool -}}
                     {{- $pool_key := printf "%s/%s" $pools $pool_id -}}
 
-                    {{- if and (exists $pool_key) ($pool_value := json (getv $pool_key)) -}}
+                    {{- if exists $pool_key -}} {{- $pool_value := json (getv $pool_key) -}}
                         {{ $upstream_name := printf "%s_%d_%d_%d_%d_mirror" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index }}
-                        {{-  if and (exists $health_check) ($health_check_value := json (getv $health_check)) -}}
+                        {{-  if exists $health_check -}}  {{- $health_check_value := json (getv $health_check) -}}
                             {{- $health_check_flags := "" -}}
                             {{- if ne $health_check_value.uri "" -}}
                                 {{- $health_check_flags = printf "uri=%s" $health_check_value.uri -}}
@@ -131,7 +131,7 @@
                 {{- /*case 3 for the location's routerules conditions redirect_pool*/ -}}
                 {{- /*case 4 for the location's routerules ratio redirect_pool*/ -}}
                 {{- $traffic_route := printf "%s/traffic_route" $location_key  -}}
-                {{- if and (exists $traffic_route) ($traffic_route_value := json (getv $traffic_route)) -}}
+                {{- if exists $traffic_route -}} {{- $traffic_route_value := json (getv $traffic_route) -}}
                     {{- $routerules := $traffic_route_value.routerule -}}
                     {{- $ratios := $traffic_route_value.ratio -}}
                     {{- /*we only support two kinds of traffic routes so far*/ -}}
@@ -139,10 +139,10 @@
                         {{- range $rule_index, $rule := $routerules -}}
                             {{- $pool_id = $rule.redirect_pool -}}
                             {{- $pool_key := printf "%s/%s" $pools $pool_id -}}
-                            {{- if and (exists $pool_key) ($pool_value := json (getv $pool_key)) -}}
+                            {{- if exists $pool_key -}} {{- $pool_value := json (getv $pool_key) -}}
                                 {{ $upstream_name := printf "%s_%d_%d_%d_%d_routerule_%d" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index $rule_index }}
 
-                                {{-  if and (exists $health_check) ($health_check_value := json (getv $health_check)) -}}
+                                {{-  if exists $health_check -}} {{- $health_check_value := json (getv $health_check) -}}
                                     {{- $health_check_flags := "" -}}
                                     {{- if ne $health_check_value.uri "" -}}
                                         {{- $health_check_flags = printf "uri=%s" $health_check_value.uri -}}
@@ -198,9 +198,9 @@
                         {{- range $ratio_index, $ratio := $ratios -}}
                             {{- $pool_id = $ratio.redirect_pool -}}
                             {{- $pool_key := printf "%s/%s" $pools $pool_id -}}
-                            {{- if and (exists $pool_key) ($pool_value := json (getv $pool_key)) -}}
+                            {{- if exists $pool_key -}} {{- $pool_value := json (getv $pool_key) -}}
                                 {{ $upstream_name := printf "%s_%d_%d_%d_%d_ratio_%d" (base64Encode $pool_id) $vip_index $listener_index $server_index $location_index $ratio_index }}
-                                {{-  if and (exists $health_check) ($health_check_value := json (getv $health_check)) -}}
+                                {{-  if exists $health_check -}} {{- $health_check_value := json (getv $health_check) -}}
                                     {{- $health_check_flags := "" -}}
                                     {{- if ne $health_check_value.uri "" -}}
                                         {{- $health_check_flags = printf "uri=%s" $health_check_value.uri -}}

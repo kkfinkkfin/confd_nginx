@@ -20,7 +20,7 @@
                 {{- $health_check := printf "%s/health_check" $location_key -}}
 
                 {{- /*case1 the match name for health_check*/ -}}
-                {{- if and (exists $health_check) ($health_check_value := json (getv $health_check)) }}
+                {{- if exists $health_check -}} {{- $health_check_value := json (getv $health_check) }}
     match match_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} {
                     {{- if $health_check_value.status }}
         status {{$health_check_value.status}};
@@ -32,7 +32,7 @@
                 {{- end -}}
 
                 {{- /*case 2 for the location's limit_req_zone and limit_conn_zone*/ -}}
-                {{- if and (exists $limit_req) ($limit_req_value := json (getv $limit_req)) -}}
+                {{- if exists $limit_req -}} {{- $limit_req_value := json (getv $limit_req) -}}
                     {{- $zone_name := printf "limit-req_%d_%d_%d_%d" $vip_index $listener_index $server_index $location_index -}}
 
                     {{- $key := "$binary_remote_addr" -}}
@@ -54,7 +54,7 @@
 
                 {{- end -}}
 
-                {{- if and (exists $limit_conn) ($limit_conn_value := json (getv $limit_conn)) -}}
+                {{- if exists $limit_conn -}} {{- $limit_conn_value := json (getv $limit_conn) -}}
                     {{- $zone_name := printf "limit-conn_%d_%d_%d_%d" $vip_index $listener_index $server_index $location_index -}}
 
                     {{- $key := "$binary_remote_addr" -}}
@@ -72,7 +72,7 @@
 
                 {{- /*case 2 for the location's geo and maps in routerules */ -}}
                 {{- /*case 3 for the location's split_clients in ratio*/ -}}
-                {{- if and (exists $traffic_route) ($traffic_route_value := json (getv $traffic_route)) -}}
+                {{- if exists $traffic_route -}} {{- $traffic_route_value := json (getv $traffic_route) -}}
                     {{- $routerules := $traffic_route_value.routerule -}}
                     {{- $ratios := $traffic_route_value.ratio -}}
                     {{- /*we only support two kinds of traffic routes so far*/ -}}
@@ -260,7 +260,7 @@
             gzip_types  text/xml text/plain text/css application/javascript application/x-javascript application/rss+xml application/atom+xml application/xml;
                 {{- end -}}
 
-                {{- if and (exists $cors) ($cors_value := json (getv $cors)) }}
+                {{- if exists $cors -}} {{- $cors_value := json (getv $cors) }}
 
             # generate cors    
                     {{- if $cors_value.allow_origins }}
@@ -283,7 +283,7 @@
                     {{- end -}}
                 {{- end -}}
 
-                {{- if and (exists $ip_restriction) ($ip_restriction_value := json (getv $ip_restriction)) }}
+                {{- if exists $ip_restriction -}} {{- $ip_restriction_value := json (getv $ip_restriction) }}
 
             # generate ip-restriction
                     {{- range $rule := $ip_restriction_value.rules -}}
@@ -293,7 +293,7 @@
                     {{- end -}}
                 {{- end -}}
 
-                {{- if and (exists $enable_websocket) ($enable_websocket_value := json (getv $enable_websocket)) -}}
+                {{- if exists $enable_websocket -}} {{- $enable_websocket_value := json (getv $enable_websocket) -}}
                     {{- if eq $enable_websocket_value.enable_websocket "true" }}
 
             # generate websocket
@@ -303,7 +303,7 @@
                     {{- end -}}
                 {{- end -}}
 
-                {{- if and (exists $limit_conn) ($limit_conn_value := json (getv $limit_conn)) -}}
+                {{- if exists $limit_conn -}} {{- $limit_conn_value := json (getv $limit_conn) -}}
                     {{- $zone_name := printf "limit-conn_%d_%d_%d_%d" $vip_index $listener_index $server_index $location_index}}
 
             # generate limit_conn
@@ -313,7 +313,7 @@
                     {{- end -}}    
                 {{- end -}}
 
-                {{- if and (exists $limit_req) ($limit_req_value := json (getv $limit_req)) -}}
+                {{- if exists $limit_req -}} {{- $limit_req_value := json (getv $limit_req) -}}
                     {{- $zone_name := printf "limit-req_%d_%d_%d_%d" $vip_index $listener_index $server_index $location_index}}
                     {{- $limit_req_args := "" -}}
                     {{- if $limit_req_value.burst -}}
@@ -330,7 +330,7 @@
                     {{- end -}}    
                 {{- end -}}
 
-                {{- if and (exists $reject) ($reject_value := json (getv $reject))}}
+                {{- if exists $reject -}} {{- $reject_value := json (getv $reject)}}
 
              # reject 
                     {{- $operator := "~" -}}
@@ -362,7 +362,7 @@
             }
                 {{- end -}}        
                            
-                {{- if and (exists $mirror)  ($mirror_value = json (getv $mirror)) }}
+                {{- if exists $mirror -}} {{- $mirror_value = json (getv $mirror) }}
                     {{- if and $mirror_value.proxy_pass_pool $mirror_value.proxy_pass_uri }}
             # genereate the mirror    
             mirror {{$mirror_value.proxy_pass_uri}};
@@ -372,7 +372,7 @@
                     {{- end -}}
                 {{- end -}}
 
-                {{- if and (exists $response_rewrite) ($response_rewrite_value := json (getv $response_rewrite)) }}
+                {{- if exists $response_rewrite -}} {{- $response_rewrite_value := json (getv $response_rewrite) }}
 
             # genereate the response rewrite        
                     {{- $headers := $response_rewrite_value.header -}}
@@ -412,7 +412,7 @@
                     {{- end -}}
                 {{- end -}}
 
-                {{- if and (exists $referer_restriction) ($referer_restriction_value := json (getv $referer_restriction)) }}
+                {{- if exists $referer_restriction -}} {{- $referer_restriction_value := json (getv $referer_restriction) }}
                     {{- $referer_flags := "" -}}
                     {{- if eq $referer_restriction_value.bypass_missing "true" -}}  
                         {{- $referer_flags = "none blocked" -}}
@@ -436,7 +436,7 @@
             }       
                 {{- end -}}
 
-                {{- if and (exists $redirect) ($redirect_value := json (getv $redirect)) }}
+                {{- if exists $redirect -}} {{- $redirect_value := json (getv $redirect) }}
             # genereate the redirect        
                     {{- if eq $redirect_value.http_to_https "false" -}}
                         {{- if $redirect_value.uri }}
@@ -464,7 +464,7 @@
             return 301 https://$host:{{$redirect_port}}/$request_uri;        
                     {{- end -}}
                 {{- end -}}
-                {{- if and (exists $proxy_rewrite) ($proxy_rewrite_value := json (getv $proxy_rewrite)) }}
+                {{- if exists $proxy_rewrite -}} {{- $proxy_rewrite_value := json (getv $proxy_rewrite) }}
 
             # genereate the proxy rewrite        
                     {{- if $proxy_rewrite_value.method }}
@@ -505,7 +505,7 @@
 
                 {{- end -}}
 
-                {{- if and (exists $traffic_route) ($traffic_route_value := json (getv $traffic_route)) -}}
+                {{- if exists $traffic_route -}} {{- $traffic_route_value := json (getv $traffic_route) -}}
                     {{- $routerules := $traffic_route_value.routerule -}}
                     {{- $ratios := $traffic_route_value.ratio }}
                     {{- if $routerules }}
