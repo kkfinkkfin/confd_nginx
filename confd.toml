@@ -1,0 +1,8 @@
+backend = "etcd"
+confdir = "/etc/confd"
+nodes = [
+    "127.0.0.1:2379"
+]
+interval = 60
+watch = true
+log-level = "debug"
