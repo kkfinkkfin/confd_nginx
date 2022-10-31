@@ -637,7 +637,7 @@
             # genereate the redirect        
                     {{- if eq $redirect_value.http_to_https "false" -}}
                         {{- if $redirect_value.uri }}
-            rewrite ^(.*)$ {{$redirect_value.uri}}/$1 break;            
+            rewrite ^(.*)$ {{$redirect_value.uri}}$1 break;            
                         {{- else if $redirect_value.regex_uri -}}
                             {{- $regex_uris := $redirect_value.regex_uri -}}
                             {{- $src := "" -}}
