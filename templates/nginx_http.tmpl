@@ -369,6 +369,7 @@
                 {{- $proxy_rewrite := printf "%s/proxy_rewrite" $root_location_key -}}
                 {{- $response_rewrite := printf "%s/response_rewrite" $root_location_key -}}
                 {{- $mirror := printf "%s/mirror" $root_location_key -}}
+		{{- $enable_websocket := printf "%s/enable_websocket" $root_location_key -}}
 
                  {{- if exists $mirror -}} {{- $mirror_value := json (getv $mirror) }}
                     {{- if and $mirror_value.proxy_pass_pool $mirror_value.proxy_pass_uri }}
@@ -389,6 +390,16 @@
             proxy_pass $scheme://{{$mirror_pass_upstream}}/$request_uri;
 
         }               {{- end -}}
+                    {{- end -}}
+                {{- end -}}
+
+		{{- if exists $enable_websocket -}} {{- $enable_websocket_value := json (getv $enable_websocket) -}}
+                    {{- if eq $enable_websocket_value.enable_websocket "true" }}
+
+	# generate websocket
+	proxy_http_version 1.1;
+	proxy_set_header Upgrade $http_upgrade;
+	proxy_set_header Connection "upgrade";
                     {{- end -}}
                 {{- end -}}
 
