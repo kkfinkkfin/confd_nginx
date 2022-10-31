@@ -597,12 +597,12 @@
                     {{- end }}
             # genereate the referer_restriction       
             valid_referers {{$referer_flags}};
-                    {{- $restriction_value := "1" -}}
+                    {{- $restriction_operator := "!=" -}}
                     {{- if eq $referer_restriction_value.type "white" -}}
-                        {{- $restriction_value = "" -}}
+                        {{- $restriction_operator = "=" -}}
                     {{- end -}}
                     {{- $referer_message := printf "%s \"%s\"" $referer_restriction_value.code $referer_restriction_value.message }}
-            if ($invalid_referer = "{{$restriction_value}}") {
+            if ($invalid_referer {{$restriction_operator}} "1") {
                 return {{$referer_message}};
             }       
                 {{- end -}}
