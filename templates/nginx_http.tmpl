@@ -199,7 +199,6 @@
         sticky {{$location_value.policies.session.type}} {{$location_value.policies.session.name}} {{$sticky_flags}};             
                     {{- end -}}
 
-
                     {{-  range $pool_value.members  }}
         server {{.ip}}{{if .port }}:{{.port}} {{end}} {{if .weight}} weight={{.weight}} {{end }} {{if .backup }} backup{{end }};   
                     {{-  end }}
@@ -347,7 +346,7 @@
 
         listen {{$listen_ip}}:{{$listen_port}} {{$listen_options}};
         server_name {{$server_name}};
-
+	status_zone status_http_{{$listen_port}};
             {{- /*ssl */ -}}
             {{- if eq $listener_value.protocol "https"}}
         include /etc/nginx/conf.d/ssl.conf;
@@ -528,6 +527,8 @@
 
         location {{$location_value.location_name }} {         
                 {{end }}
+
+            status_zone location_{{$location_value.location_name }};
 
                 {{- if exists $ip_restriction -}} {{- $ip_restriction_value := json (getv $ip_restriction) }}
 
@@ -1149,5 +1150,3 @@
         {{- end -}}
     {{- end -}} 
 {{- end -}}
-
-
