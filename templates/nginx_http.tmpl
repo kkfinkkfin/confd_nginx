@@ -333,7 +333,6 @@
             {{- $server_name := $server -}}
             {{- $listen_ip := $listener_value.vip -}}
             {{- $listen_port := $listener_value.vport -}}
-            {{- $server_key := printf "%s/%s/advance" $servers $server -}}{{$server_value := json (getv $server_key)  -}}
 
             {{- if eq $listener_value.protocol "https" -}}
                 {{- $listen_options = printf "%s ssl" $listen_options -}}
@@ -351,11 +350,15 @@
             {{- if eq $listener_value.protocol "https"}}
         include /etc/nginx/conf.d/ssl.conf;
         ssl_protocols TLSv1.1 TLSv1.2;
-                {{- if $server_value.ssl_offload -}}
-                    {{- range $server_value.ssl_offload }}
+                {{- $server_key := printf "%s/%s/advance" $servers $server -}}
+                {{- if exists $server_key -}}{{$server_value := json (getv $server_key)  -}}
+
+                    {{- if $server_value.ssl_offload -}}
+                        {{- range $server_value.ssl_offload }}
         ssl_certificate      {{.crt_path}};
         ssl_certificate_key  {{.crt_key_path}};
-                    {{- end -}}           
+                        {{- end -}}           
+                    {{- end -}}
                 {{- end }}
         proxy_redirect  http:// $scheme://;
             {{- end -}}   
