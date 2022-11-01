@@ -11,14 +11,13 @@
         {{- $servers := printf "%s/servers" $listener_key  -}}
         {{- range $server_index, $server := ls $servers  -}}
             {{- $locations := printf "%s/%s/locations" $servers $server  -}}
-            {{- range $location_index, $location := lsdir $locations -}}
+            {{- range $location_index, $location := ls $locations -}}
                 {{- $location_key := printf "%s/%s" $locations $location  -}}
                 {{- $location_value := json (getv $location_key)  -}}
                 {{- $limit_req := printf "%s/limit_req" $location_key -}}
                 {{- $limit_conn := printf "%s/limit_conn" $location_key -}}
                 {{- $traffic_route := printf "%s/traffic_route" $location_key -}}
                 {{- $health_check := printf "%s/health_check" $location_key -}}
-
                 {{- /*case1 the match name for health_check*/ -}}
                 {{- if exists $health_check -}} {{- $health_check_value := json (getv $health_check) }}
     match match_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} {
@@ -164,7 +163,7 @@
         {{- $servers := printf "%s/servers" $listener_key  -}}
         {{- range $server_index, $server := ls $servers  -}}
             {{- $locations := printf "%s/%s/locations" $servers $server  -}}
-            {{- range $location_index, $location := lsdir $locations -}}
+            {{- range $location_index, $location := ls $locations -}}
                 {{- $location_key := printf "%s/%s" $locations $location  -}}
                 {{- $location_value := json (getv $location_key)  -}}
                 {{- $health_check := printf "%s/health_check" $location_key -}}
@@ -522,7 +521,7 @@
 
             {{- end -}}
             
-            {{- range $location_index, $location := lsdir $locations -}}
+            {{- range $location_index, $location := ls $locations -}}
                 {{- $location_key := printf "%s/%s" $locations $location  -}}
                 {{- $location_value := json (getv $location_key)  -}}
                 {{- $cors := printf "%s/cors" $location_key -}}
@@ -907,11 +906,10 @@
                         {{- $hc_servers := printf "%s/servers" $hc_listener_key  -}}
                         {{- range $hc_server_index, $hc_server := ls $hc_servers  -}}
                             {{- $hc_locations := printf "%s/%s/locations" $hc_servers $hc_server  -}}
-                            {{- range $hc_location_index, $hc_location := lsdir $hc_locations -}}
+                            {{- range $hc_location_index, $hc_location := ls $hc_locations -}}
                                 {{- $hc_location_key := printf "%s/%s" $hc_locations $hc_location  -}}
                                 {{- $hc_location_value := json (getv $hc_location_key)  -}}
                                 {{- $hc_health_check := printf "%s/health_check" $hc_location_key -}}
-
                                 {{- /*case 1 for the location's default pool*/ -}}
                                 {{- $hc_pool_id := $hc_location_value.default_pool_id -}}
                                 {{- $hc_pool_key := printf "%s/%s" $hc_pools $hc_pool_id }}
