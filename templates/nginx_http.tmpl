@@ -136,7 +136,7 @@
                     {{- else if $ratios }}
     
     # generate the split_clients
-    split_clients "${http_x_forwarded_for}AAA" $split_clients_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} {
+    split_clients "{{$traffic_route_value.channel}}AAA" $split_clients_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} {
                         {{- range $ratio_index, $ratio := $ratios }}
                             {{- $pool_id := $ratio.pool_id }}
         {{$ratio.ratio}}%  {{base64Encode $pool_id}}_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}}_ratio_{{$ratio_index}};
