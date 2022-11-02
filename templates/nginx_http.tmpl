@@ -90,7 +90,7 @@
                                             {{- $ipset_default_value  = "1" -}}
                                         {{- end }}
 
-    geo $val_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}}_{{$rule_index}}_{{$condition_index}} {
+    geo $proxy_add_x_forwarded_for $val_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}}_{{$rule_index}}_{{$condition_index}} {
                                         {{- range $ip := $condition.ips}}
         {{$ip}}  {{$ipset_value}};                                                        
                                         {{- end}}
