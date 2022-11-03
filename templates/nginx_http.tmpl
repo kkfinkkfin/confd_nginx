@@ -680,7 +680,7 @@
                         {{- if $redirect_value.port -}}
                             {{- $redirect_port = $redirect_value.port -}}
                         {{- end }}
-            return 301 https://$host:{{$redirect_port}}/$request_uri;        
+            return 301 https://$host:{{$redirect_port}}$request_uri;        
                     {{- end -}}
                 {{- end -}}
 
