@@ -425,6 +425,14 @@
         proxy_set_header "host" {{$proxy_rewrite_value.host}};
                     {{- end -}}
 
+                    {{- if $proxy_rewrite_value.proxy_set -}}
+                        {{- range $rewrite_header := $proxy_rewrite_value.proxy_set -}}
+                            {{- range $k, $v := $rewrite_header }}
+        proxy_set_header  {{$k}} "{{$v}}";                    
+                            {{- end -}}
+                        {{- end -}}
+                    {{- end -}}
+
                     {{- if eq $proxy_rewrite_value.pass_flag true }}
         proxy_pass_request_headers  on;
                     {{- else -}}
@@ -717,6 +725,14 @@
 
                     {{- if $proxy_rewrite_value.host }}
             proxy_set_header "host" {{$proxy_rewrite_value.host}};
+                    {{- end -}}
+
+                    {{- if $proxy_rewrite_value.proxy_set -}}
+                        {{- range $rewrite_header := $proxy_rewrite_value.proxy_set -}}
+                            {{- range $k, $v := $rewrite_header }}
+        proxy_set_header  {{$k}} "{{$v}}";                    
+                            {{- end -}}
+                        {{- end -}}
                     {{- end -}}
 
                     {{- if eq $proxy_rewrite_value.pass_flag true }}
