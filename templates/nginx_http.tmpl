@@ -457,7 +457,7 @@
                         {{- end -}}
                         
                         {{- if and ($src) ($dst) }}
-        proxy_redirect {{$src}} {{$dst}};
+        rewrite {{$src}} {{$dst}};
                         {{- end -}}
                     {{- end -}}
 
@@ -759,7 +759,7 @@
                         {{- end -}}
                         
                         {{- if and ($src) ($dst) }}
-            proxy_redirect {{$src}} {{$dst}};
+            rewrite {{$src}} {{$dst}};
                         {{- end -}}
                     {{- end -}}
 
