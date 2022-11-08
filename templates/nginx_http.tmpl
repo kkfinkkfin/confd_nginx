@@ -349,7 +349,7 @@
 	    status_zone status_http_{{$listen_port}};
 
             {{- if eq $xfp true }}
-        proxy_set_header X-Forwarded-For  $proxy_add_x_forwarded_for;    
+        proxy_set_header X-Forwarded-For  $http_x_forwarded_for;    
             {{- end -}}
             {{- if eq $xff true }} 
         proxy_set_header X-Forwarded-Proto $scheme;    
