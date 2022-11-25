@@ -34,10 +34,41 @@
                 {{- if exists $limit_req -}} {{- $limit_req_value := json (getv $limit_req) -}}
                     {{- $zone_name := printf "limit-req_%d_%d_%d_%d" $vip_index $listener_index $server_index $location_index -}}
 
-                    {{- $key := "$binary_remote_addr" -}}
+                    {{- $key := "$http_x_forwarded_for" -}}
+                    {{- $map_generated := "0" -}}
+                    
                     {{- if and ($limit_req_value.key) (ne $limit_req_value.key "") -}}
                         {{- $key = $limit_req_value.key -}}
                     {{- end -}} 
+
+                    {{- if and ($limit_req_value.type) (ne $limit_req_value.type "") -}}
+                        {{- $geo_value := 1 -}}
+                        {{- $geo_default_value := 0 -}}
+                        {{- $map_value := $key -}}
+                        {{- $map_default_value := `""` -}}
+
+                        {{- if eq $limit_req_value.type "whitelist" -}}
+                            {{- $geo_value = 0 -}}
+                            {{- $geo_default_value = 1 -}}
+                            {{- $map_value = `""` -}}
+                            {{- $map_default_value = $key -}}
+                        {{- end }}
+
+     geo {{$key}} $limit_req_geo_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} {
+                        {{- if and ($limit_req_value.ips) (gt (len $limit_req_value.ips) 0) -}}
+                            {{- range $ip := $limit_req_value.ips }}
+          {{$ip}} {{$geo_value}};                         
+                            {{- end -}}
+                        {{- end }}
+          default {{$geo_default_value}};              
+     }
+
+     map $limit_req_geo_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} $limit_req_map_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} {
+         {{$geo_value}} {{$map_value}};
+         default  {{$map_default_value}};
+     }
+                    {{- $map_generated = "1" -}}
+                    {{- end -}}
 
                     {{- $zone_size := "10m" -}}
                     {{- if and ($limit_req_value.zone_size) (ne $limit_req_value.zone_size "") -}}
@@ -49,24 +80,62 @@
                         {{- $rate = $limit_req_value.rate -}}
                     {{- end }}
 
-    limit_req_zone {{$key}} zone={{$zone_name}}:{{$zone_size}} rate={{$rate}};
+                    {{- if eq  $map_generated "0" }}
+     limit_req_zone {{$key}} zone={{$zone_name}}:{{$zone_size}} rate={{$rate}};
+                    {{- else }}
+     limit_req_zone $limit_req_map_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} zone={{$zone_name}}:{{$zone_size}} rate={{$rate}};
+                    {{- end -}}
 
                 {{- end -}}
 
                 {{- if exists $limit_conn -}} {{- $limit_conn_value := json (getv $limit_conn) -}}
                     {{- $zone_name := printf "limit-conn_%d_%d_%d_%d" $vip_index $listener_index $server_index $location_index -}}
 
-                    {{- $key := "$binary_remote_addr" -}}
+                    {{- $key := "$http_x_forwarded_for" -}}
+                    {{- $map_generated := "0" -}}
+                    
                     {{- if and ($limit_conn_value.key) (ne $limit_conn_value.key "") -}}
                         {{- $key = $limit_conn_value.key -}}
                     {{- end -}} 
+
+                    {{- if and ($limit_conn_value.type) (ne $limit_conn_value.type "") -}}
+                        {{- $geo_value := 1 -}}
+                        {{- $geo_default_value := 0 -}}
+                        {{- $map_value := $key -}}
+                        {{- $map_default_value := `""` -}}
+
+                        {{- if eq $limit_conn_value.type "whitelist" -}}
+                            {{- $geo_value = 0 -}}
+                            {{- $geo_default_value = 1 -}}
+                            {{- $map_value = `""` -}}
+                            {{- $map_default_value = $key -}}
+                        {{- end }}
+
+     geo {{$key}} $limit_conn_geo_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} {
+                        {{- if and ($limit_conn_value.ips) (gt (len $limit_conn_value.ips) 0) -}}
+                            {{- range $ip := $limit_conn_value.ips }}
+          {{$ip}} {{$geo_value}};                         
+                            {{- end -}}
+                        {{- end }}
+          default {{$geo_default_value}};              
+     }
+
+     map $limit_conn_geo_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} $limit_conn_map_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} {
+         {{$geo_value}} {{$map_value}};
+         default  {{$map_default_value}};
+     }
+                    {{- $map_generated = "1" -}}
+                    {{- end -}}
 
                     {{- $zone_size := "10m" -}}
                     {{- if and ($limit_conn_value.zone_size) (ne $limit_conn_value.zone_size "") -}}
                         {{- $zone_size = $limit_conn_value.zone_size -}}
                     {{- end }} 
-
-    limit_conn_zone {{$key}} zone={{$zone_name}}:{{$zone_size}};
+                    {{- if eq $map_generated "0" }}
+     limit_conn_zone {{$key}} zone={{$zone_name}}:{{$zone_size}};
+                    {{- else }}
+     limit_conn_zone $limit_conn_map_{{$vip_index}}_{{$listener_index}}_{{$server_index}}_{{$location_index}} zone={{$zone_name}}:{{$zone_size}};
+                    {{- end -}}
                 {{- end -}}
 
                 {{- /*case 2 for the location's geo and maps in routerules */ -}}
